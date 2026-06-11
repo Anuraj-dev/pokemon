@@ -31,6 +31,7 @@ window.addEventListener('keydown', (e: KeyboardEvent) => {
   const top = uiStack[uiStack.length - 1];
   switch (e.code) {
     case 'KeyZ':
+    case 'KeyE':
     case 'Space':
       e.preventDefault();
       if (top) top.confirm?.();
@@ -127,30 +128,89 @@ export function runHeld(): boolean {
   return held.has('ShiftLeft') || held.has('ShiftRight');
 }
 
-// ----------------------------------------------------------- mouse orbit
+// ------------------------------------------- pointer-lock mouse freelook
 
-/** Camera orbit state, mutated by mouse drag / wheel; read by the chase cam. */
+/** Camera orbit state, mutated by locked mouse / wheel; read by the chase cam. */
 export const orbit = {
   yaw: 0, // radians around the player; 0 = camera looks north (-z)
   pitch: 0.62,
   dist: 7.5,
 };
 
-let dragging = false;
-let lastX = 0;
-let lastY = 0;
+const PITCH_MIN = 0.08; // near-horizon Minecraft view
+const PITCH_MAX = 1.35;
 
+let locked = false;
+let crosshairEl: HTMLDivElement | null = null;
+let crosshairHint: HTMLDivElement | null = null;
+
+export function pointerLocked(): boolean {
+  return locked;
+}
+
+function refreshCrosshair(): void {
+  if (!crosshairEl) return;
+  crosshairEl.style.display = locked && !uiActive() ? 'block' : 'none';
+}
+
+/** Called by the overworld each frame: show what the crosshair would use. */
+export function setCrosshairTarget(label: string | null): void {
+  if (!crosshairEl || !crosshairHint) return;
+  refreshCrosshair();
+  crosshairEl.classList.toggle('active', label !== null);
+  crosshairHint.textContent = label ?? '';
+  crosshairHint.style.display = locked && !uiActive() && label ? 'block' : 'none';
+}
+
+/**
+ * Minecraft-style mouse capture: click the canvas to lock the pointer,
+ * mouse motion turns the camera, wheel zooms, click interacts, Esc
+ * (browser-handled) releases. Dragging still orbits when unlocked.
+ */
 export function bindPointer(canvas: HTMLCanvasElement): void {
+  crosshairEl = document.createElement('div');
+  crosshairEl.id = 'crosshair';
+  crosshairEl.style.display = 'none';
+  document.body.appendChild(crosshairEl);
+  crosshairHint = document.createElement('div');
+  crosshairHint.id = 'crosshair-hint';
+  crosshairHint.style.display = 'none';
+  document.body.appendChild(crosshairHint);
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
   canvas.addEventListener('mousedown', (e) => {
+    if (locked) {
+      // locked click = use/interact (left button only)
+      if (e.button === 0 && !uiActive()) worldKeys.onConfirm?.();
+      return;
+    }
     dragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
   });
+  canvas.addEventListener('click', () => {
+    if (!locked && !uiActive()) void canvas.requestPointerLock();
+  });
+  document.addEventListener('pointerlockchange', () => {
+    locked = document.pointerLockElement === canvas;
+    refreshCrosshair();
+    if (!locked) setCrosshairTarget(null);
+  });
+
   window.addEventListener('mouseup', () => (dragging = false));
   window.addEventListener('mousemove', (e) => {
+    if (locked) {
+      if (uiActive()) return;
+      orbit.yaw -= e.movementX * 0.0026;
+      orbit.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, orbit.pitch + e.movementY * 0.0022));
+      return;
+    }
     if (!dragging) return;
     orbit.yaw -= (e.clientX - lastX) * 0.005;
-    orbit.pitch = Math.min(1.35, Math.max(0.18, orbit.pitch + (e.clientY - lastY) * 0.004));
+    orbit.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, orbit.pitch + (e.clientY - lastY) * 0.004));
     lastX = e.clientX;
     lastY = e.clientY;
   });
@@ -158,7 +218,7 @@ export function bindPointer(canvas: HTMLCanvasElement): void {
     'wheel',
     (e) => {
       e.preventDefault();
-      orbit.dist = Math.min(14, Math.max(3.5, orbit.dist + e.deltaY * 0.01));
+      orbit.dist = Math.min(16, Math.max(3.0, orbit.dist + e.deltaY * 0.01));
     },
     { passive: false },
   );

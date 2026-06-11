@@ -4,7 +4,7 @@
  * battles, and DOM-only screens (title, menus, credits).
  */
 import * as THREE from 'three';
-import { registerAllSprites, hotSwapFileAssets } from './render3d/textures';
+import { registerAllSprites, hotSwapFileAssets, setOnSwap } from './render3d/textures';
 import { Overworld3D } from './game/overworld';
 import { Battle3D } from './game/battle';
 import { MenuSuite } from './game/menus';
@@ -90,6 +90,7 @@ async function runOverworld(): Promise<void> {
   });
   active = overworld;
   setMode('overworld', true);
+  setOnSwap(() => overworld.onAssetsSwapped());
 
   worldKeys.onConfirm = () => overworld.onConfirmKey();
   worldKeys.onMenu = () => overworld.onMenuKey();

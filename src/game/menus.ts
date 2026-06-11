@@ -18,6 +18,7 @@ import { gameRNG } from '../core/rng';
 import { audio } from '../audio/audio';
 import { creatureKey, spriteSnapshot } from '../render3d/textures';
 import { DialogBox, ListMenu, confirmMenu, waitDismiss, GAME_W, GAME_H, el, label, panel, wrapText } from '../ui/dom';
+import { view, setViewSetting, VIEW_LIMITS } from '../engine/viewSettings';
 import { setMode } from './debug';
 
 export type MenuMode = 'pause' | 'box' | 'shop';
@@ -651,11 +652,26 @@ export class MenuSuite {
         { label: 'Music Volume', rightLabel: `${Math.round(s.settings.musicVol * 100)}%` },
         { label: 'SFX Volume', rightLabel: `${Math.round(s.settings.sfxVol * 100)}%` },
         { label: 'Text Speed', rightLabel: ['Slow', 'Normal', 'Fast'][s.settings.textSpeed - 1] },
+        { label: 'Chunk Distance', rightLabel: `${view.chunkDistance} (${view.chunkDistance * 16} tiles)` },
+        { label: 'Simulation Distance', rightLabel: `${view.simDistance} (${view.simDistance * 16} tiles)` },
         { label: 'Done' },
       ];
-      const menu = new ListMenu(items, { x: 120, y: 70, width: 240, title: 'SETTINGS  (confirm to cycle)' });
+      const menu = new ListMenu(items, { x: 110, y: 60, width: 260, title: 'SETTINGS  (confirm to cycle)' });
       const pick = await menu.choose();
-      if (pick === null || pick === 3) return;
+      if (pick === null || pick === 5) return;
+      if (pick === 3) {
+        // wraps min→max; chunks stream in/out live next frame
+        const lim = VIEW_LIMITS.chunkDistance;
+        setViewSetting('chunkDistance', view.chunkDistance >= lim.max ? lim.min : view.chunkDistance + 1);
+        audio.sfxMenuSelect();
+        continue;
+      }
+      if (pick === 4) {
+        const lim = VIEW_LIMITS.simDistance;
+        setViewSetting('simDistance', view.simDistance >= lim.max ? lim.min : view.simDistance + 1);
+        audio.sfxMenuSelect();
+        continue;
+      }
       if (pick === 0) {
         s.settings.musicVol = Math.round(((s.settings.musicVol + 0.25) % 1.25) * 100) / 100;
         if (s.settings.musicVol > 1) s.settings.musicVol = 0;

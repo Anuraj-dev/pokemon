@@ -1,14 +1,16 @@
 /**
- * ASCII→3D world compiler. Walks a MapDef grid and produces a THREE.Group:
- * a baked ground plane (tile canvases composited into one atlas texture),
- * instanced extruded boxes for solid tiles, and floating door labels.
+ * ASCII→3D region compiler. Builds a THREE.Group for any rectangular window
+ * of tile chars — a whole interior map (`buildWorld`) or one streamed chunk
+ * of the stitched outdoor world (`buildRegion` via render3d/chunks).
+ * A baked ground atlas, instanced extruded boxes for solid tiles, bespoke
+ * trees/tall-grass/doors, and floating PC/GYM labels above warp doors.
  * Collision/encounters stay tile-grid lookups in the overworld controller —
  * this module is visuals only, so map integrity tests keep their teeth.
  */
 import * as THREE from 'three';
 import { LEGEND, type MapDef } from '../data/maps/defs';
 import { TILE } from '../render/spriteGen';
-import { spriteCanvas, tileKey } from './textures';
+import { spriteCanvas, spriteTexture, tileKey } from './textures';
 
 /** World scale: 1 tile = 1 unit. Tile (x,y) center sits at (x+0.5, y+0.5). */
 
@@ -42,12 +44,14 @@ const HEIGHTS: Record<string, number> = {
   X: 2.1, // darkwall
 };
 
-export interface WorldView {
+export interface RegionView {
   group: THREE.Group;
   /** repaint ground + rebuild boxes (cut bushes, hot-swapped tiles) */
   rebuild: () => void;
   dispose: () => void;
 }
+
+export type WorldView = RegionView;
 
 /** deterministic per-tile jitter so decor never pops between rebuilds */
 function hash2(x: number, y: number): number {
@@ -120,18 +124,26 @@ function doorTexture(): THREE.CanvasTexture {
   return doorTex;
 }
 
-function effectiveChar(map: MapDef, x: number, y: number, cutBushes: Set<string>): string {
-  const ch = map.grid[y][x];
-  if (LEGEND[ch]?.cuttable && cutBushes.has(`${map.id}:${x},${y}`)) {
-    return map.indoor ? 'c' : '.';
-  }
-  return ch;
+export interface WarpLabel {
+  x: number; // global tile coords
+  y: number;
+  text: string;
 }
 
-export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
+/**
+ * Build the 3D view of a tile-char window. `charAt` is queried in global
+ * coords; geometry is positioned in global coords too, so the group needs
+ * no offset. Doors, trees and labels land at their tile centers.
+ */
+export function buildRegion(
+  charAt: (x: number, y: number) => string,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  labels: WarpLabel[] = [],
+): RegionView {
   const group = new THREE.Group();
-  const w = map.grid[0].length;
-  const h = map.grid.length;
   let built: THREE.Object3D[] = [];
   let boxResources: { dispose(): void }[] = [];
   const disposables: { dispose(): void }[] = [];
@@ -150,10 +162,10 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     ctx.imageSmoothingEnabled = false;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const ch = effectiveChar(map, x, y, cutBushes);
+        const ch = charAt(x0 + x, y0 + y);
         // 'D' gets a real 3D door mesh; painting the flat door sprite under it
-        // reads as a second door from above, so lay walkable floor instead.
-        const tile = ch === 'D' ? (map.indoor ? 'floor' : 'path') : (LEGEND[ch]?.tile ?? 'void');
+        // reads as a second door from above, so lay walkable ground instead.
+        const tile = ch === 'D' ? (charAt(x0 + x, y0 + y + 1) === 'o' ? 'floor' : 'path') : (LEGEND[ch]?.tile ?? 'void');
         ctx.drawImage(spriteCanvas(tileKey(tile)), x * TILE, y * TILE);
       }
     }
@@ -164,7 +176,7 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
   const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(w / 2, 0, h / 2);
+  ground.position.set(x0 + w / 2, 0, y0 + h / 2);
   ground.receiveShadow = true;
   group.add(ground);
   disposables.push(groundGeo, groundMat, groundTex);
@@ -179,9 +191,9 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     boxResources = [];
 
     const byChar = new Map<string, { x: number; y: number }[]>();
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const ch = effectiveChar(map, x, y, cutBushes);
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        const ch = charAt(x, y);
         if (!(ch in HEIGHTS)) continue;
         if (!byChar.has(ch)) byChar.set(ch, []);
         byChar.get(ch)!.push({ x, y });
@@ -191,11 +203,8 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     const m = new THREE.Matrix4();
     for (const [ch, cells] of byChar) {
       const height = HEIGHTS[ch];
-      const tex = new THREE.CanvasTexture(spriteCanvas(tileKey(LEGEND[ch].tile)));
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshLambertMaterial({ map: tex });
+      // shared registry texture: survives hot-swap, no per-region copies
+      const mat = new THREE.MeshLambertMaterial({ map: spriteTexture(tileKey(LEGEND[ch].tile)) });
       const inst = new THREE.InstancedMesh(boxGeo, mat, cells.length);
       inst.castShadow = true;
       inst.receiveShadow = true;
@@ -208,7 +217,7 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
       inst.instanceMatrix.needsUpdate = true;
       group.add(inst);
       built.push(inst);
-      boxResources.push(tex, mat, inst);
+      boxResources.push(mat, inst);
     }
   };
 
@@ -216,9 +225,9 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
   const treeCells: { x: number; y: number }[] = [];
   const grassCells: { x: number; y: number }[] = [];
   const doorCells: { x: number; y: number }[] = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const ch = map.grid[y][x];
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) {
+      const ch = charAt(x, y);
       if (ch === '#') treeCells.push({ x, y });
       else if (ch === 'g') grassCells.push({ x, y });
       else if (ch === 'D') doorCells.push({ x, y });
@@ -299,11 +308,7 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     const frameGeo = new THREE.BoxGeometry(1.0, 1.66, 0.08);
     const frameMat = new THREE.MeshLambertMaterial({ color: 0x4a2c14 });
     // wall-textured lintel fills the facade gap between door top and roofline
-    const wallTex = new THREE.CanvasTexture(spriteCanvas(tileKey('wall')));
-    wallTex.magFilter = THREE.NearestFilter;
-    wallTex.minFilter = THREE.NearestFilter;
-    wallTex.colorSpace = THREE.SRGBColorSpace;
-    const lintelMat = new THREE.MeshLambertMaterial({ map: wallTex });
+    const lintelMat = new THREE.MeshLambertMaterial({ map: spriteTexture(tileKey('wall')) });
     const lintelGeo = new THREE.BoxGeometry(1.001, 0.3, 1.001);
     for (const c of doorCells) {
       const door = new THREE.Mesh(doorGeo, [side, side, side, side, face, face]);
@@ -316,13 +321,11 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
       lintel.castShadow = true;
       group.add(door, frame, lintel);
     }
-    disposables.push(doorGeo, side, face, frameGeo, frameMat, lintelGeo, lintelMat, wallTex);
+    disposables.push(doorGeo, side, face, frameGeo, frameMat, lintelGeo, lintelMat);
   }
 
   // ---- floating PC/GYM labels above warp doors
-  for (const warp of map.warps ?? []) {
-    const text = warp.to.endsWith('-center') ? 'PC' : /^gym\d+$/.test(warp.to) ? 'GYM' : null;
-    if (!text) continue;
+  for (const lab of labels) {
     const c = document.createElement('canvas');
     c.width = 96;
     c.height = 40;
@@ -332,15 +335,15 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 6;
     ctx.strokeStyle = '#000';
-    ctx.strokeText(text, 48, 20);
+    ctx.strokeText(lab.text, 48, 20);
     ctx.fillStyle = '#fff';
-    ctx.fillText(text, 48, 20);
+    ctx.fillText(lab.text, 48, 20);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.SpriteMaterial({ map: tex, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(1.5, 0.62, 1);
-    sprite.position.set(warp.x + 0.5, 2.1, warp.y + 0.35);
+    sprite.position.set(lab.x + 0.5, 2.1, lab.y + 0.35);
     group.add(sprite);
     disposables.push(tex, mat);
   }
@@ -361,7 +364,30 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
   };
 }
 
-/** Scene atmosphere per map: sky color, fog, lights. */
+/** PC/GYM label text for a warp target, or null. */
+export function warpLabelText(to: string): string | null {
+  return to.endsWith('-center') ? 'PC' : /^gym\d+$/.test(to) ? 'GYM' : null;
+}
+
+/** Whole-map view for interiors (and any non-stitched map). */
+export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
+  const charAt = (x: number, y: number): string => {
+    if (y < 0 || y >= map.grid.length || x < 0 || x >= map.grid[y].length) return ' ';
+    const ch = map.grid[y][x];
+    if (LEGEND[ch]?.cuttable && cutBushes.has(`${map.id}:${x},${y}`)) {
+      return map.indoor ? 'c' : '.';
+    }
+    return ch;
+  };
+  const labels: WarpLabel[] = [];
+  for (const warp of map.warps ?? []) {
+    const text = warpLabelText(warp.to);
+    if (text) labels.push({ x: warp.x, y: warp.y, text });
+  }
+  return buildRegion(charAt, 0, 0, map.grid[0].length, map.grid.length, labels);
+}
+
+/** Scene atmosphere for interiors/caves: sky color, fog, lights. */
 export function applyAtmosphere(scene: THREE.Scene, map: MapDef): void {
   const isCave = /cave|hollow|depth|tunnel|shrine/.test(map.id) || map.grid.some((r) => r.includes('C'));
   const isDark = map.grid.some((r) => r.includes('X') || r.includes('d'));

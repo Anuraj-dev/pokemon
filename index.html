@@ -126,6 +126,39 @@
         image-rendering: pixelated;
       }
       .dialog { z-index: 20; }
+      /* ---- pointer-lock crosshair ---- */
+      #crosshair {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translate(-50%, -50%);
+        z-index: 8;
+        pointer-events: none;
+      }
+      #crosshair::before, #crosshair::after {
+        content: '';
+        position: absolute;
+        background: rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+      }
+      #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+      #crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
+      #crosshair.active::before, #crosshair.active::after { background: #f0d048; }
+      #crosshair-hint {
+        position: fixed;
+        left: 50%;
+        top: calc(50% + 22px);
+        transform: translateX(-50%);
+        z-index: 8;
+        pointer-events: none;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        color: #f0d048;
+        text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
