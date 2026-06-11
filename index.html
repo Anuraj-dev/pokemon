@@ -68,13 +68,16 @@
         z-index: 50;
         pointer-events: none;
       }
-      .dim {
+      .scrim {
         position: fixed;
         inset: 0;
         background: rgba(8, 8, 16, 0.55);
         z-index: 5;
         pointer-events: none;
       }
+      /* text-dim modifier; must never paint a background (it shares
+         elements with .txt labels) */
+      .dim { color: #8890a8; }
       /* ---- title / credits screens ---- */
       .screen {
         left: 0;
@@ -126,6 +129,19 @@
         image-rendering: pixelated;
       }
       .dialog { z-index: 20; }
+      /* ---- bright classic theme while a battle is on screen ---- */
+      #ui.battle-lite { color: #2a2620; text-shadow: none; }
+      .battle-lite .win {
+        background: #f8f2e0;
+        border-color: #4a4034;
+        outline-color: #c0b088;
+        color: #2a2620;
+      }
+      .battle-lite .gold { color: #9a7010; }
+      .battle-lite .blue { color: #2858a8; }
+      .battle-lite .green { color: #1a8838; }
+      .battle-lite .txt.dim { color: #9a9282; }
+      .battle-lite .bar-bg { background: #d8d0b8; }
       /* ---- pointer-lock crosshair ---- */
       #crosshair {
         position: fixed;

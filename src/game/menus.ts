@@ -31,7 +31,7 @@ export class MenuSuite {
   /** Run a menu mode to completion. Resolves 'quit' if quit-to-title chosen. */
   async open(mode: MenuMode, stock: string[] = []): Promise<'quit' | undefined> {
     this.quit = false;
-    this.dim = el('div', 'dim', document.body);
+    this.dim = el('div', 'scrim', document.body);
     this.dialog = new DialogBox();
     setMode('menu', true);
     try {

@@ -259,7 +259,8 @@ export class ListMenu {
     for (let r = 0; r < this.visibleRows; r++) {
       const item = this.items[this.scroll + r];
       this.rows[r].textContent = item ? item.label : '';
-      this.rows[r].style.color = item?.disabled ? '#8890a8' : '#f8f8f8';
+      // class, not inline color, so theme overrides (battle-lite) apply
+      this.rows[r].classList.toggle('dim', !!item?.disabled);
       this.rightRows[r].textContent = item?.rightLabel ?? '';
     }
     const titleH = this.opts.title ? 18 : 0;

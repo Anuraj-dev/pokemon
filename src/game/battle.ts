@@ -18,11 +18,13 @@ import { gameRNG } from '../core/rng';
 import { audio } from '../audio/audio';
 import { Billboard } from '../render3d/billboard';
 import { creatureKey, tileKey, spriteCanvas, spriteTexture } from '../render3d/textures';
-import { DialogBox, ListMenu, confirmMenu, GAME_W, GAME_H, el, label, panel, hpColor, sleep } from '../ui/dom';
+import { DialogBox, ListMenu, confirmMenu, GAME_W, GAME_H, el, label, panel, hpColor, sleep, uiRoot } from '../ui/dom';
+import { MoveFxPlayer, moveTint } from './moveFx';
 import type { BattleRequest, BattleOutcome, BattleBiome } from './battleTypes';
 
+// plain ground textures: calm backdrops that keep the pixel sprites readable
 const BIOME_FLOOR: Record<BattleBiome, string> = {
-  grass: 'tallgrass',
+  grass: 'grass',
   cave: 'cavefloor',
   water: 'water',
   gym: 'gymfloor',
@@ -83,12 +85,18 @@ export class Battle3D {
   private shakeTime = 0;
   private camBase = HOME_CAM.clone();
   private camLook = HOME_LOOK.clone();
+  private fx: MoveFxPlayer;
+  /** FX frame of reference for the move being animated */
+  private fxAttacker = PLAYER_POS.clone();
+  private fxDefender = FOE_POS.clone();
+  private fxSide: Side = 'player';
 
   constructor(req: BattleRequest) {
     this.req = req;
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
     this.camera.position.copy(HOME_CAM);
     this.camera.lookAt(HOME_LOOK);
+    uiRoot().classList.add('battle-lite');
     this.buildArena();
 
     this.playerBB = new Billboard(creatureKey('emberling', 'back'), 2.6, 2.6);
@@ -97,8 +105,20 @@ export class Battle3D {
     this.foeBB.mesh.visible = false;
     this.scene.add(this.playerBB.mesh, this.foeBB.mesh);
 
+    // panels live top-left (foe) and bottom-right above the dialog (player);
+    // menus open top-right so nothing ever covers an HP panel
     this.foePanel = this.buildPanel(8, 10, false);
-    this.playerPanel = this.buildPanel(264, 152, true);
+    this.playerPanel = this.buildPanel(GAME_W - 216, GAME_H - 78 - 72, true);
+
+    this.fx = new MoveFxPlayer({
+      scene: this.scene,
+      attacker: this.fxAttacker,
+      defender: this.fxDefender,
+      shake: (s) => {
+        this.shakeTime = s;
+      },
+      tintSprite: (at, color) => this.tintSide(at === 'self' ? this.fxSide : this.fxSide === 'player' ? 'foe' : 'player', color),
+    });
 
     this.engine = new BattleEngine(
       {
@@ -291,7 +311,7 @@ export class Battle3D {
     await this.dialog.show(`What will ${displayName(active)} do?`, { holdLastPage: true });
     const menu = new ListMenu(
       [{ label: 'FIGHT' }, { label: 'BAG' }, { label: 'TEAM' }, { label: this.req.canRun ? 'RUN' : 'RUN ✕' }],
-      { x: GAME_W - 130, y: GAME_H - 172, width: 122 },
+      { x: GAME_W - 134, y: 12, width: 126 },
     );
     const pick = await menu.choose();
     if (pick === null) return null;
@@ -321,7 +341,7 @@ export class Battle3D {
       await this.dialog.show(`${displayName(c)} has no moves left... it must Struggle!`);
       return { type: 'move', moveIndex: -1 };
     }
-    const info = label(null, 12, GAME_H - 172, '', 'small blue');
+    const info = label(null, 12, 70, '', 'small blue');
     info.style.whiteSpace = 'pre';
     this.domBits.push(info);
     const items = c.moves.map((m) => {
@@ -329,9 +349,9 @@ export class Battle3D {
       return { label: mv.name, rightLabel: `${m.pp}/${mv.pp}`, disabled: m.pp <= 0 };
     });
     const menu = new ListMenu(items, {
-      x: GAME_W - 200,
-      y: GAME_H - 78 - items.length * 18 - 20,
-      width: 192,
+      x: GAME_W - 206,
+      y: 12,
+      width: 198,
       onHover: (i) => {
         const mv = moveById(c.moves[i].id);
         info.textContent = `${mv.typeless ? 'Basic' : TYPE_NAMES[mv.type]} · ${mv.category.toUpperCase()}\nPower ${mv.power || '—'} · Acc ${mv.accuracy || '—'}\n${mv.desc}`;
@@ -356,9 +376,9 @@ export class Battle3D {
       return null;
     }
     const menu = new ListMenu(usable.map((u) => ({ label: ITEMS[u.id].name, rightLabel: `×${u.qty}` })), {
-      x: GAME_W - 210,
-      y: 40,
-      width: 200,
+      x: GAME_W - 214,
+      y: 12,
+      width: 204,
       visibleRows: 8,
       title: 'BAG',
     });
@@ -398,7 +418,7 @@ export class Battle3D {
         disabled: allowAny ? false : c.hp <= 0 || isActive,
       };
     });
-    const menu = new ListMenu(items, { x: 24, y: 40, width: 250, visibleRows: 6, title });
+    const menu = new ListMenu(items, { x: 16, y: 70, width: 250, visibleRows: 6, title });
     const pick = await menu.choose();
     if (pick === null) {
       if (cancellable) return null;
@@ -422,7 +442,7 @@ export class Battle3D {
           await this.animHp(ev.side, ev.hp, ev.maxHp);
           break;
         case 'moveAnim':
-          await this.animMove(ev.side, TYPE_COLORS[ev.moveType]);
+          await this.animMove(ev.side, ev.moveId, ev.category, TYPE_COLORS[ev.moveType]);
           break;
         case 'effectiveness':
           audio.sfxHit(ev.mult);
@@ -436,7 +456,7 @@ export class Battle3D {
           break;
         }
         case 'stat': {
-          await this.statFlash(ev.side, ev.delta > 0 ? 0xfff0a0 : 0xa0c0ff);
+          await this.tintSide(ev.side, ev.delta > 0 ? 0xfff0a0 : 0xa0c0ff);
           break;
         }
         case 'faint':
@@ -496,39 +516,62 @@ export class Battle3D {
     });
   }
 
-  private async animMove(side: Side, color: number): Promise<void> {
+  /** Per-move animation: camera cut, the move's own FX recipe, then the
+   *  impact framing (skipped for status moves). */
+  private async animMove(side: Side, moveId: string, category: string, typeColor: number): Promise<void> {
     const attacker = this.bb(side);
     const defender = this.bb(side === 'player' ? 'foe' : 'player');
+    const atkPos = this.pos(side);
     const defPos = this.pos(side === 'player' ? 'foe' : 'player');
 
+    // orient the FX stage for whoever is attacking
+    this.fxSide = side;
+    this.fxAttacker.copy(atkPos);
+    this.fxDefender.copy(defPos);
+
     // camera cut behind the attacker's shoulder
-    const atkPos = this.pos(side);
     const behind = atkPos.clone().sub(defPos).normalize().multiplyScalar(3.4).add(atkPos);
     behind.y = 2.0;
     await this.cutCamera(behind, defPos.clone().setY(1.2), 180);
 
-    // lunge
-    const home = atkPos.clone();
-    const lunge = defPos.clone().sub(atkPos).multiplyScalar(0.32).add(atkPos);
-    await tween(150, (k) => {
-      const e = Math.sin(k * Math.PI);
-      attacker.mesh.position.x = home.x + (lunge.x - home.x) * e;
-      attacker.mesh.position.z = home.z + (lunge.z - home.z) * e;
-    });
-    attacker.mesh.position.x = home.x;
-    attacker.mesh.position.z = home.z;
+    const recipe = this.fx.recipeFor(moveId);
+    const color = moveTint(moveId) || typeColor;
 
-    // impact burst on defender
-    audio.sfxHit(1);
-    this.burst(defPos.clone().setY(1.2), color);
-    this.shakeTime = 0.18;
-    const defHome = defPos.clone();
-    await tween(180, (k) => {
-      defender.mesh.position.x = defHome.x + Math.sin(k * Math.PI * 4) * 0.12;
-    });
-    defender.mesh.position.x = defHome.x;
+    if (recipe.lunge) {
+      const home = atkPos.clone();
+      const lunge = defPos.clone().sub(atkPos).multiplyScalar(0.32).add(atkPos);
+      await tween(150, (k) => {
+        const e = Math.sin(k * Math.PI);
+        attacker.mesh.position.x = home.x + (lunge.x - home.x) * e;
+        attacker.mesh.position.z = home.z + (lunge.z - home.z) * e;
+      });
+      attacker.mesh.position.x = home.x;
+      attacker.mesh.position.z = home.z;
+    }
+
+    await this.fx.play(moveId, color);
+
+    if (category !== 'status') {
+      // impact burst on defender
+      audio.sfxHit(1);
+      this.burst(defPos.clone().setY(1.2), color);
+      this.shakeTime = Math.max(this.shakeTime, 0.18);
+      const defHome = defPos.clone();
+      await tween(180, (k) => {
+        defender.mesh.position.x = defHome.x + Math.sin(k * Math.PI * 4) * 0.12;
+      });
+      defender.mesh.position.x = defHome.x;
+    }
 
     await this.cutCamera(HOME_CAM, HOME_LOOK, 260);
+  }
+
+  /** brief sprite tint, used by FX 'flash' steps and stat changes */
+  private async tintSide(side: Side, color: number): Promise<void> {
+    const mat = this.bb(side).mesh.material as THREE.MeshBasicMaterial;
+    mat.color.setHex(color);
+    await sleep(150);
+    mat.color.setHex(0xffffff);
   }
 
   private burst(at: THREE.Vector3, color: number): void {
@@ -551,14 +594,6 @@ export class Battle3D {
       for (const s of sprites) this.scene.remove(s);
       mat.dispose();
     });
-  }
-
-  private async statFlash(side: Side, color: number): Promise<void> {
-    const bb = this.bb(side);
-    const mat = bb.mesh.material as THREE.MeshBasicMaterial;
-    mat.color.setHex(color);
-    await sleep(140);
-    mat.color.setHex(0xffffff);
   }
 
   private async animFaint(side: Side): Promise<void> {
@@ -739,6 +774,7 @@ export class Battle3D {
   }
 
   dispose(): void {
+    uiRoot().classList.remove('battle-lite');
     this.dialog.destroy();
     for (const d of this.domBits) d.remove();
     for (const d of this.disposables) d.dispose();
