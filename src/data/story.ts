@@ -124,7 +124,7 @@ S('thornbury-guide', [
 S('voltis-collector', [
   {
     op: 'if', flag: 'voltisGift', not: true, then: [
-      { op: 'say', text: 'Collector: I spent my whole life seeking a partner for my Golett. Link Stones bond two souls into one — but my journey is done.\nTake my spare. Let it finish someone else\'s story.' },
+      { op: 'say', text: 'Collector: I spent my whole life seeking a partner for my Cubone. Link Stones bond two souls into one — but my journey is done.\nTake my spare. Let it finish someone else\'s story.' },
       { op: 'giveItem', item: 'linkstone', qty: 1 },
       { op: 'setFlag', flag: 'voltisGift' },
     ], else: [
@@ -161,7 +161,7 @@ S('astronomer-talk', [
           { op: 'giveItem', item: 'masterball', qty: 1 },
           { op: 'setFlag', flag: 'gotMasterball' },
         ], else: [
-          { op: 'say', text: 'Astronomer: Necrozma is not evil, whatever Eclipse believes. It is balance. Treat it that way.' },
+          { op: 'say', text: 'Astronomer: Mewtwo is not evil, whatever Eclipse believes. It is balance. Treat it that way.' },
         ],
       },
     ], else: [
@@ -212,18 +212,18 @@ S('rival5', [
 S('forest-eclipse', [
   { op: 'say', text: 'Grunt: Team Eclipse business! This glowing little pest is coming with us. The Director wants every Lumina creature off the streets!' },
   { op: 'battle', trainerId: 'eclipse-forest1' },
-  { op: 'say', text: 'The grunt flees into the trees!\nThe little Togepi looks up at you, trembling — then presses against your leg.' },
+  { op: 'say', text: 'The grunt flees into the trees!\nThe little Clefairy looks up at you, trembling — then presses against your leg.' },
   {
-    op: 'choice', prompt: 'Take Togepi with you?', options: [
+    op: 'choice', prompt: 'Take Clefairy with you?', options: [
       {
         label: 'Welcome it aboard', then: [
           { op: 'giveCreature', speciesId: 'glimkit', level: 6 },
-          { op: 'say', text: 'Togepi joined your team, glowing faintly with relief!' },
+          { op: 'say', text: 'Clefairy joined your team, glowing faintly with relief!' },
         ],
       },
       {
         label: 'Set it free', then: [
-          { op: 'say', text: 'The Togepi blinks gratefully and drifts into the canopy, shining like a lantern among the leaves.' },
+          { op: 'say', text: 'The Clefairy blinks gratefully and drifts into the canopy, shining like a lantern among the leaves.' },
         ],
       },
     ],
@@ -258,7 +258,7 @@ S('hideout-admin', [
 ]);
 
 S('hideout-boss', [
-  { op: 'say', text: 'Noxim: Director Noxim. You have unpicked my operation thread by thread, child.\nLight blinds. Only in perfect darkness are all things equal. Necrozma will gift Veridia that equality — eternal eclipse.' },
+  { op: 'say', text: 'Noxim: Director Noxim. You have unpicked my operation thread by thread, child.\nLight blinds. Only in perfect darkness are all things equal. Mewtwo will gift Veridia that equality — eternal eclipse.' },
   { op: 'battle', trainerId: 'eclipse-boss1' },
   { op: 'setFlag', flag: 'hideoutCleared' },
   { op: 'setFlag', flag: 'hasEclipseKey' },
@@ -268,7 +268,7 @@ S('hideout-boss', [
 ]);
 
 S('spire-boss', [
-  { op: 'say', text: 'Noxim: Too late! TOO LATE! The shards are set, the Spire sings, and Necrozma STIRS!\nOne last obstacle, then. You. As always. You.' },
+  { op: 'say', text: 'Noxim: Too late! TOO LATE! The shards are set, the Spire sings, and Mewtwo STIRS!\nOne last obstacle, then. You. As always. You.' },
   { op: 'battle', trainerId: 'eclipse-boss2' },
   { op: 'setFlag', flag: 'spireCleared' },
   { op: 'say', text: 'Noxim drops to his knees as the Spire floods with twin light — gold above, violet below.\nNoxim: No... the eclipse was supposed to be forever...\nSomething vast turns its gaze upon you.' },
@@ -276,7 +276,7 @@ S('spire-boss', [
 ]);
 
 S('umbralis-encounter', [
-  { op: 'say', text: 'Necrozma regards you — one eye blazing gold, one drinking the light around it.\nIt does not seem angry. It seems... curious which half of it you will answer to.' },
+  { op: 'say', text: 'Mewtwo regards you — one eye blazing gold, one drinking the light around it.\nIt does not seem angry. It seems... curious which half of it you will answer to.' },
   { op: 'wildBattle', speciesId: 'umbralis', level: 50, resolveFlag: 'umbralisResolved' },
 ]);
 

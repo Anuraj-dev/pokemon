@@ -151,7 +151,9 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const ch = effectiveChar(map, x, y, cutBushes);
-        const tile = LEGEND[ch]?.tile ?? 'void';
+        // 'D' gets a real 3D door mesh; painting the flat door sprite under it
+        // reads as a second door from above, so lay walkable floor instead.
+        const tile = ch === 'D' ? (map.indoor ? 'floor' : 'path') : (LEGEND[ch]?.tile ?? 'void');
         ctx.drawImage(spriteCanvas(tileKey(tile)), x * TILE, y * TILE);
       }
     }
@@ -296,15 +298,25 @@ export function buildWorld(map: MapDef, cutBushes: Set<string>): WorldView {
     const face = new THREE.MeshLambertMaterial({ map: tex });
     const frameGeo = new THREE.BoxGeometry(1.0, 1.66, 0.08);
     const frameMat = new THREE.MeshLambertMaterial({ color: 0x4a2c14 });
+    // wall-textured lintel fills the facade gap between door top and roofline
+    const wallTex = new THREE.CanvasTexture(spriteCanvas(tileKey('wall')));
+    wallTex.magFilter = THREE.NearestFilter;
+    wallTex.minFilter = THREE.NearestFilter;
+    wallTex.colorSpace = THREE.SRGBColorSpace;
+    const lintelMat = new THREE.MeshLambertMaterial({ map: wallTex });
+    const lintelGeo = new THREE.BoxGeometry(1.001, 0.3, 1.001);
     for (const c of doorCells) {
       const door = new THREE.Mesh(doorGeo, [side, side, side, side, face, face]);
       door.position.set(c.x + 0.5, 0.75, c.y + 0.5);
       door.castShadow = true;
       const frame = new THREE.Mesh(frameGeo, frameMat);
       frame.position.set(c.x + 0.5, 0.83, c.y + 0.44);
-      group.add(door, frame);
+      const lintel = new THREE.Mesh(lintelGeo, lintelMat);
+      lintel.position.set(c.x + 0.5, 1.75, c.y + 0.5);
+      lintel.castShadow = true;
+      group.add(door, frame, lintel);
     }
-    disposables.push(doorGeo, side, face, frameGeo, frameMat);
+    disposables.push(doorGeo, side, face, frameGeo, frameMat, lintelGeo, lintelMat, wallTex);
   }
 
   // ---- floating PC/GYM labels above warp doors
