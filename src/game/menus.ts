@@ -1,15 +1,14 @@
 /**
- * MenuScene — the full menu suite layered over the overworld: pause menu,
- * party management, bag, PC box storage, compendium, shop, settings, saves.
+ * Menu suite — pause menu, party management, bag, PC box storage,
+ * compendium, shop, settings, saves — as DOM overlays over the 3D world.
+ * A straight port of the old MenuScene flows onto the DOM toolkit.
  */
-import Phaser from 'phaser';
-import { getState, removeFromBag, addToBag, bagCount, MAX_PARTY, NUM_BOXES, BOX_SIZE } from '../engine/state';
-import { calcStats, displayName, evolve, type CreatureInstance } from '../engine/creature';
-import { movesAtLevel } from '../data/species';
+import { getState, removeFromBag, addToBag, MAX_PARTY, NUM_BOXES, BOX_SIZE, markCaught, healParty, setFlag, getFlag } from '../engine/state';
+import { calcStats, displayName, evolve, addExp, levelEvolution, type CreatureInstance } from '../engine/creature';
+import { movesAtLevel, speciesById, SPECIES_ORDER } from '../data/species';
 import { applyItemToCreature } from '../engine/itemUse';
 import { ITEMS, itemById } from '../data/items';
 import { moveById } from '../data/moves';
-import { speciesById, SPECIES_ORDER } from '../data/species';
 import { natureById, STAT_NAMES, type StatKey } from '../data/natures';
 import { abilityById } from '../data/abilities';
 import { TYPE_NAMES } from '../data/types';
@@ -17,44 +16,33 @@ import { totalExpFor } from '../data/growth';
 import { saveToSlot, formatPlaytime } from '../engine/save';
 import { gameRNG } from '../core/rng';
 import { audio } from '../audio/audio';
-import { creatureKey } from '../render/assets';
-import { DialogBox, ListMenu, confirmMenu, GAME_W, GAME_H, UI_FONT, UI_FONT_SMALL, drawWindow, hpColor } from '../ui/ui';
+import { creatureKey, spriteSnapshot } from '../render3d/textures';
+import { DialogBox, ListMenu, confirmMenu, waitDismiss, GAME_W, GAME_H, el, label, panel, wrapText } from '../ui/dom';
+import { setMode } from './debug';
 
-type MenuMode = 'pause' | 'box' | 'shop';
+export type MenuMode = 'pause' | 'box' | 'shop';
 
-export class MenuScene extends Phaser.Scene {
-  private mode: MenuMode = 'pause';
-  private stock: string[] = [];
-  private resolveDone!: (v: unknown) => void;
+export class MenuSuite {
   private dialog!: DialogBox;
+  private dim!: HTMLDivElement;
+  private quit = false;
 
-  constructor() {
-    super('menu');
-  }
-
-  init(data: { mode: MenuMode; stock?: string[]; resolve: (v: unknown) => void }): void {
-    this.mode = data.mode;
-    this.stock = data.stock ?? [];
-    this.resolveDone = data.resolve;
-  }
-
-  create(): void {
-    this.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 0x080810, 0.55);
-    this.dialog = new DialogBox(this, 3000);
-    void this.runMode();
-  }
-
-  private async runMode(): Promise<void> {
-    if (this.mode === 'pause') await this.pauseMenu();
-    else if (this.mode === 'box') await this.boxMenu();
-    else if (this.mode === 'shop') await this.shopMenu();
-    this.close();
-  }
-
-  private close(): void {
-    this.scene.stop();
-    this.scene.resume('overworld');
-    this.resolveDone(undefined);
+  /** Run a menu mode to completion. Resolves 'quit' if quit-to-title chosen. */
+  async open(mode: MenuMode, stock: string[] = []): Promise<'quit' | undefined> {
+    this.quit = false;
+    this.dim = el('div', 'dim', document.body);
+    this.dialog = new DialogBox();
+    setMode('menu', true);
+    try {
+      if (mode === 'pause') await this.pauseMenu();
+      else if (mode === 'box') await this.boxMenu();
+      else await this.shopMenu(stock);
+    } finally {
+      setMode('menu', false);
+      this.dialog.destroy();
+      this.dim.remove();
+    }
+    return this.quit ? 'quit' : undefined;
   }
 
   // ================================================================ pause
@@ -62,18 +50,22 @@ export class MenuScene extends Phaser.Scene {
   private async pauseMenu(): Promise<void> {
     while (true) {
       const s = getState();
-      const menu = new ListMenu(this, [
-        { label: 'Compendium' },
-        { label: 'Party', disabled: s.party.length === 0 },
-        { label: 'Bag' },
-        { label: 'Trainer Card' },
-        { label: 'Save' },
-        { label: 'Settings' },
-        { label: 'Quit to Title' },
-        { label: 'Close' },
-      ], { x: GAME_W - 168, y: 16, width: 158 });
+      const menu = new ListMenu(
+        [
+          { label: 'Compendium' },
+          { label: 'Party', disabled: s.party.length === 0 },
+          { label: 'Bag' },
+          { label: 'Trainer Card' },
+          { label: 'Save' },
+          { label: 'Settings' },
+          { label: 'Cheats' },
+          { label: 'Quit to Title' },
+          { label: 'Close' },
+        ],
+        { x: GAME_W - 168, y: 16, width: 158 },
+      );
       const pick = await menu.choose();
-      if (pick === null || pick === 7) return;
+      if (pick === null || pick === 8) return;
       switch (pick) {
         case 0: await this.compendium(); break;
         case 1: await this.partyMenu(); break;
@@ -81,13 +73,11 @@ export class MenuScene extends Phaser.Scene {
         case 3: await this.trainerCard(); break;
         case 4: await this.saveMenu(); break;
         case 5: await this.settingsMenu(); break;
-        case 6: {
+        case 6: await this.cheatsMenu(); break;
+        case 7: {
           if (await this.confirmDialog('Quit to title? Unsaved progress will be lost.')) {
-            this.scene.stop('overworld');
-            this.scene.stop();
             audio.stopMusic();
-            this.scene.start('title');
-            this.resolveDone(undefined);
+            this.quit = true;
             return;
           }
           break;
@@ -98,7 +88,7 @@ export class MenuScene extends Phaser.Scene {
 
   private async confirmDialog(text: string): Promise<boolean> {
     await this.dialog.show(text, { holdLastPage: true });
-    const yes = await confirmMenu(this);
+    const yes = await confirmMenu();
     this.dialog.hide();
     return yes;
   }
@@ -118,25 +108,28 @@ export class MenuScene extends Phaser.Scene {
   private async partyMenu(): Promise<void> {
     while (true) {
       const s = getState();
-      const menu = new ListMenu(this, this.partyItems(), { x: 20, y: 20, width: 260, title: 'PARTY' });
+      const menu = new ListMenu(this.partyItems(), { x: 20, y: 20, width: 260, title: 'PARTY' });
       const pick = await menu.choose();
       if (pick === null) return;
       const c = s.party[pick];
-      const action = new ListMenu(this, [
-        { label: 'Summary' },
-        { label: 'Switch' },
-        { label: 'Give Item' },
-        { label: 'Take Item', disabled: !c.heldItem },
-        { label: 'Rename' },
-        { label: 'Back' },
-      ], { x: 300, y: 60, width: 150 });
+      const action = new ListMenu(
+        [
+          { label: 'Summary' },
+          { label: 'Switch' },
+          { label: 'Give Item' },
+          { label: 'Take Item', disabled: !c.heldItem },
+          { label: 'Rename' },
+          { label: 'Back' },
+        ],
+        { x: 300, y: 60, width: 150 },
+      );
       const act = await action.choose();
       switch (act) {
         case 0:
           await this.summary(c);
           break;
         case 1: {
-          const other = new ListMenu(this, this.partyItems(), { x: 20, y: 20, width: 260, title: 'Swap with?' });
+          const other = new ListMenu(this.partyItems(), { x: 20, y: 20, width: 260, title: 'Swap with?' });
           const o = await other.choose();
           if (o !== null && o !== pick) {
             [s.party[pick], s.party[o]] = [s.party[o], s.party[pick]];
@@ -178,7 +171,7 @@ export class MenuScene extends Phaser.Scene {
       await this.dialog.show('Nothing suitable to give.');
       return;
     }
-    const menu = new ListMenu(this, holdable.map(([id, qty]) => ({ label: ITEMS[id].name, rightLabel: `×${qty}` })), {
+    const menu = new ListMenu(holdable.map(([id, qty]) => ({ label: ITEMS[id].name, rightLabel: `×${qty}` })), {
       x: 300, y: 40, width: 170, visibleRows: 8, title: 'Give what?',
     });
     const pick = await menu.choose();
@@ -198,58 +191,36 @@ export class MenuScene extends Phaser.Scene {
     const stats = calcStats(c);
     const nat = natureById(c.natureId);
     const ab = abilityById(sp.ability);
-    const panel = this.add.container(0, 0).setDepth(2500);
-    const g = this.add.graphics();
-    drawWindow(g, 14, 12, GAME_W - 28, GAME_H - 24);
-    panel.add(g);
-    const img = this.add.image(80, 84, creatureKey(c.speciesId, 'front', c.shiny)).setScale(1.1);
-    panel.add(img);
-    const title = `${displayName(c)}${c.shiny ? ' ★' : ''}  Lv${c.level}`;
-    panel.add(this.add.text(30, 24, title, UI_FONT));
-    panel.add(this.add.text(30, 146, sp.types.map((t) => TYPE_NAMES[t]).join(' / '), { ...UI_FONT_SMALL, color: '#f0d048' }));
-    panel.add(this.add.text(30, 162, `${nat.name} nature · ${ab.name}`, UI_FONT_SMALL));
-    panel.add(this.add.text(30, 178, `Held: ${c.heldItem ? itemById(c.heldItem).name : '—'}`, UI_FONT_SMALL));
+    const p = panel(14, 12, GAME_W - 28, GAME_H - 24);
+    const img = spriteSnapshot(creatureKey(c.speciesId, 'front', c.shiny));
+    img.className = 'sprite';
+    img.style.cssText += 'left:28px;top:30px;width:106px;height:106px;';
+    p.appendChild(img);
+    label(p, 16, 12, `${displayName(c)}${c.shiny ? ' ★' : ''}  Lv${c.level}`);
+    label(p, 16, 134, sp.types.map((t) => TYPE_NAMES[t]).join(' / '), 'small gold');
+    label(p, 16, 150, `${nat.name} nature · ${ab.name}`, 'small');
+    label(p, 16, 166, `Held: ${c.heldItem ? itemById(c.heldItem).name : '—'}`, 'small');
     const nextExp = c.level < 100 ? totalExpFor(sp.growth, c.level + 1) - c.exp : 0;
-    panel.add(this.add.text(30, 194, `EXP ${c.exp} · next in ${nextExp}`, UI_FONT_SMALL));
+    label(p, 16, 182, `EXP ${c.exp} · next in ${nextExp}`, 'small');
 
     const statKeys: StatKey[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'];
     statKeys.forEach((k, i) => {
       const valText = k === 'hp' ? `${c.hp}/${stats.hp}` : `${stats[k]}`;
-      panel.add(this.add.text(200, 50 + i * 17, STAT_NAMES[k], UI_FONT_SMALL));
-      panel.add(this.add.text(285, 50 + i * 17, valText, { ...UI_FONT_SMALL, color: '#a8e0a8' }).setOrigin(1, 0));
+      label(p, 186, 38 + i * 17, STAT_NAMES[k], 'small');
+      label(p, 246, 38 + i * 17, valText, 'small green');
     });
-    panel.add(this.add.text(200, 28, 'MOVES', { ...UI_FONT_SMALL, color: '#f0d048' }).setOrigin(0, 0));
+    label(p, 186, 16, 'MOVES', 'small gold');
     c.moves.forEach((m, i) => {
       const mv = moveById(m.id);
-      panel.add(this.add.text(310, 50 + i * 17, mv.name, UI_FONT_SMALL));
-      panel.add(this.add.text(GAME_W - 32, 50 + i * 17, `${m.pp}/${mv.pp}`, UI_FONT_SMALL).setOrigin(1, 0));
+      label(p, 296, 38 + i * 17, mv.name, 'small');
+      label(p, 396, 38 + i * 17, `${m.pp}/${mv.pp}`, 'small');
     });
-    panel.add(this.add.text(200, 28, '', UI_FONT_SMALL));
-    panel.add(this.add.text(30, 216, this.wrap(sp.flavor, 62), { ...UI_FONT_SMALL, color: '#c8d0e8' }));
-    panel.add(this.add.text(GAME_W / 2, GAME_H - 28, '— press confirm/cancel to close —', { ...UI_FONT_SMALL, color: '#8890a8' }).setOrigin(0.5));
+    const flavor = label(p, 16, 204, wrapText(sp.flavor, 62).join('\n'), 'small blue');
+    flavor.style.whiteSpace = 'pre';
+    label(p, GAME_W / 2 - 120, GAME_H - 52, '— press confirm/cancel to close —', 'small dim');
 
-    await this.waitDismiss();
-    panel.destroy();
-  }
-
-  private wrap(text: string, width: number): string {
-    const out: string[] = [];
-    let line = '';
-    for (const w of text.split(' ')) {
-      if (line.length + w.length + 1 > width) {
-        out.push(line);
-        line = w;
-      } else line = line ? line + ' ' + w : w;
-    }
-    if (line) out.push(line);
-    return out.join('\n');
-  }
-
-  private waitDismiss(): Promise<void> {
-    return new Promise((resolve) => {
-      const menu = new ListMenu(this, [{ label: '' }], { x: -500, y: -500, width: 10 });
-      void menu.choose().then(() => resolve());
-    });
+    await waitDismiss();
+    p.remove();
   }
 
   // ================================================================ bag
@@ -263,7 +234,7 @@ export class MenuScene extends Phaser.Scene {
       { id: 'key', label: 'Key Items' },
     ] as const;
     while (true) {
-      const catMenu = new ListMenu(this, cats.map((c) => ({ label: c.label })), { x: 24, y: 24, width: 150, title: 'BAG' });
+      const catMenu = new ListMenu(cats.map((c) => ({ label: c.label })), { x: 24, y: 24, width: 150, title: 'BAG' });
       const cp = await catMenu.choose();
       if (cp === null) return;
       const cat = cats[cp].id;
@@ -274,13 +245,14 @@ export class MenuScene extends Phaser.Scene {
           await this.dialog.show('This pocket is empty.');
           break;
         }
-        const info = this.add.text(24, GAME_H - 110, '', { ...UI_FONT_SMALL, color: '#a8c0e8' }).setDepth(2400);
-        const list = new ListMenu(this, entries.map(([id, qty]) => ({ label: ITEMS[id].name, rightLabel: `×${qty}` })), {
+        const info = label(null, 24, GAME_H - 110, '', 'small blue');
+        info.style.whiteSpace = 'pre';
+        const list = new ListMenu(entries.map(([id, qty]) => ({ label: ITEMS[id].name, rightLabel: `×${qty}` })), {
           x: 190, y: 24, width: 200, visibleRows: 10, title: cats[cp].label,
-          onHover: (i) => info.setText(this.wrap(ITEMS[entries[i][0]].desc, 60)),
+          onHover: (i) => (info.textContent = wrapText(ITEMS[entries[i][0]].desc, 60).join('\n')),
         });
         const ip = await list.choose();
-        info.destroy();
+        info.remove();
         if (ip === null) break;
         await this.useItemFromBag(entries[ip][0]);
       }
@@ -318,7 +290,7 @@ export class MenuScene extends Phaser.Scene {
       await this.dialog.show('You have no creatures.');
       return;
     }
-    const target = new ListMenu(this, this.partyItems(), { x: 20, y: 24, width: 260, title: `Use ${item.name} on?` });
+    const target = new ListMenu(this.partyItems(), { x: 20, y: 24, width: 260, title: `Use ${item.name} on?` });
     const tp = await target.choose();
     if (tp === null) return;
     const c = s.party[tp];
@@ -338,7 +310,6 @@ export class MenuScene extends Phaser.Scene {
     await this.dialog.show(`What?! ${oldName} is evolving!`);
     const level = c.level;
     evolve(c, into);
-    const { markCaught } = await import('../engine/state');
     markCaught(into);
     await this.dialog.show(`${oldName} evolved into ${speciesById(into).name}!`);
     for (const moveId of movesAtLevel(into, level)) {
@@ -365,7 +336,7 @@ export class MenuScene extends Phaser.Scene {
         ...s.party.map((c) => ({ label: `[P] ${displayName(c)} Lv${c.level}`, rightLabel: `${c.hp > 0 ? 'OK' : 'FNT'}` })),
         ...box.map((c) => ({ label: `    ${displayName(c)} Lv${c.level}` })),
       ];
-      const menu = new ListMenu(this, items, { x: 30, y: 16, width: 290, visibleRows: 12, title: 'CREATURE STORAGE' });
+      const menu = new ListMenu(items, { x: 30, y: 16, width: 290, visibleRows: 12, title: 'CREATURE STORAGE' });
       const pick = await menu.choose();
       if (pick === null) return;
       if (pick === 0) {
@@ -375,12 +346,10 @@ export class MenuScene extends Phaser.Scene {
       const inParty = pick <= s.party.length;
       const idx = inParty ? pick - 1 : pick - 1 - s.party.length;
       const c = inParty ? s.party[idx] : box[idx];
-      const action = new ListMenu(this, [
-        { label: 'Summary' },
-        { label: inParty ? 'Deposit' : 'Withdraw' },
-        { label: 'Release' },
-        { label: 'Back' },
-      ], { x: 330, y: 60, width: 130 });
+      const action = new ListMenu(
+        [{ label: 'Summary' }, { label: inParty ? 'Deposit' : 'Withdraw' }, { label: 'Release' }, { label: 'Back' }],
+        { x: 330, y: 60, width: 130 },
+      );
       const act = await action.choose();
       if (act === 0) {
         await this.summary(c);
@@ -422,38 +391,40 @@ export class MenuScene extends Phaser.Scene {
 
   // ================================================================ shop
 
-  private async shopMenu(): Promise<void> {
+  private async shopMenu(stock: string[]): Promise<void> {
     const s = getState();
     while (true) {
       await this.dialog.show(`Welcome! You have ₽${s.player.money}. How can I help?`, { holdLastPage: true });
-      const menu = new ListMenu(this, [{ label: 'Buy' }, { label: 'Sell' }, { label: 'Leave' }], { x: GAME_W - 150, y: 40, width: 140 });
+      const menu = new ListMenu([{ label: 'Buy' }, { label: 'Sell' }, { label: 'Leave' }], { x: GAME_W - 150, y: 40, width: 140 });
       const pick = await menu.choose();
       this.dialog.hide();
       if (pick === null || pick === 2) return;
-      if (pick === 0) await this.buyMenu();
+      if (pick === 0) await this.buyMenu(stock);
       else await this.sellMenu();
     }
   }
 
-  private async buyMenu(): Promise<void> {
+  private async buyMenu(stock: string[]): Promise<void> {
     const s = getState();
     while (true) {
-      const info = this.add.text(24, GAME_H - 110, '', { ...UI_FONT_SMALL, color: '#a8c0e8' }).setDepth(2400);
-      const list = new ListMenu(this, this.stock.map((id) => ({ label: ITEMS[id].name, rightLabel: `₽${ITEMS[id].price}` })), {
+      const info = label(null, 24, GAME_H - 110, '', 'small blue');
+      info.style.whiteSpace = 'pre';
+      const list = new ListMenu(stock.map((id) => ({ label: ITEMS[id].name, rightLabel: `₽${ITEMS[id].price}` })), {
         x: 150, y: 20, width: 220, visibleRows: 10, title: `Buy — ₽${s.player.money}`,
-        onHover: (i) => info.setText(this.wrap(ITEMS[this.stock[i]].desc, 60)),
+        onHover: (i) => (info.textContent = wrapText(ITEMS[stock[i]].desc, 60).join('\n')),
       });
       const pick = await list.choose();
-      info.destroy();
+      info.remove();
       if (pick === null) return;
-      const item = ITEMS[this.stock[pick]];
+      const item = ITEMS[stock[pick]];
       if (s.player.money < item.price) {
         await this.dialog.show("You can't afford that.");
         continue;
       }
-      const qtyMenu = new ListMenu(this, [1, 5, 10].map((q) => ({
-        label: `×${q}`, rightLabel: `₽${item.price * q}`, disabled: s.player.money < item.price * q,
-      })), { x: 280, y: 90, width: 130, title: 'How many?' });
+      const qtyMenu = new ListMenu(
+        [1, 5, 10].map((q) => ({ label: `×${q}`, rightLabel: `₽${item.price * q}`, disabled: s.player.money < item.price * q })),
+        { x: 280, y: 90, width: 130, title: 'How many?' },
+      );
       const qp = await qtyMenu.choose();
       if (qp === null) continue;
       const qty = [1, 5, 10][qp];
@@ -475,9 +446,10 @@ export class MenuScene extends Phaser.Scene {
         await this.dialog.show('You have nothing I can buy.');
         return;
       }
-      const list = new ListMenu(this, sellable.map(([id, qty]) => ({
-        label: ITEMS[id].name, rightLabel: `×${qty} · ₽${Math.floor(ITEMS[id].price / 2)}`,
-      })), { x: 150, y: 20, width: 240, visibleRows: 10, title: `Sell — ₽${s.player.money}` });
+      const list = new ListMenu(
+        sellable.map(([id, qty]) => ({ label: ITEMS[id].name, rightLabel: `×${qty} · ₽${Math.floor(ITEMS[id].price / 2)}` })),
+        { x: 150, y: 20, width: 240, visibleRows: 10, title: `Sell — ₽${s.player.money}` },
+      );
       const pick = await list.choose();
       if (pick === null) return;
       const [id] = sellable[pick];
@@ -489,27 +461,154 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
+  // ================================================================ cheats
+
+  /** Pick a party member; resolves the creature or null. */
+  private async pickPartyMember(title: string): Promise<CreatureInstance | null> {
+    const s = getState();
+    if (s.party.length === 0) {
+      await this.dialog.show('You have no creatures.');
+      return null;
+    }
+    const menu = new ListMenu(this.partyItems(), { x: 20, y: 20, width: 260, title });
+    const pick = await menu.choose();
+    return pick === null ? null : s.party[pick];
+  }
+
+  private async cheatLevelUp(levels: number): Promise<void> {
+    const c = await this.pickPartyMember(`Level up which creature? (+${levels})`);
+    if (!c) return;
+    if (c.level >= 100) {
+      await this.dialog.show(`${displayName(c)} is already at the level cap.`);
+      return;
+    }
+    const sp = speciesById(c.speciesId);
+    const target = Math.min(100, c.level + levels);
+    const res = addExp(c, totalExpFor(sp.growth, target) - c.exp);
+    audio.sfxLevelUp();
+    await this.dialog.show(`${displayName(c)} rocketed to Lv${c.level}!`);
+    for (const nm of res.newMoves) {
+      if (c.moves.some((m) => m.id === nm.moveId)) continue;
+      const mv = moveById(nm.moveId);
+      if (c.moves.length < 4) {
+        c.moves.push({ id: nm.moveId, pp: mv.pp });
+        await this.dialog.show(`${displayName(c)} learned ${mv.name}!`);
+      } else {
+        const items = [
+          ...c.moves.map((m) => ({ label: moveById(m.id).name })),
+          { label: `Skip ${mv.name}` },
+        ];
+        const menu = new ListMenu(items, { x: GAME_W - 230, y: 60, width: 220, title: `Forget which move for ${mv.name}?` });
+        const pick = await menu.choose();
+        if (pick !== null && pick < 4) {
+          c.moves[pick] = { id: nm.moveId, pp: mv.pp };
+          await this.dialog.show(`${displayName(c)} learned ${mv.name}!`);
+        }
+      }
+    }
+    const into = levelEvolution(c);
+    if (into && (await this.confirmDialog(`${displayName(c)} can evolve! Evolve now?`))) {
+      await this.runEvolutionSimple(c, into);
+    }
+  }
+
+  private async cheatEvolve(): Promise<void> {
+    const c = await this.pickPartyMember('Evolve which creature?');
+    if (!c) return;
+    const into = speciesById(c.speciesId).evolution?.into;
+    if (!into) {
+      await this.dialog.show(`${displayName(c)} has no further evolution.`);
+      return;
+    }
+    await this.runEvolutionSimple(c, into);
+  }
+
+  private async cheatsMenu(): Promise<void> {
+    const s = getState();
+    while (true) {
+      const noEnc = !!getFlag('cheat:noencounters');
+      const menu = new ListMenu(
+        [
+          { label: 'Level Up +1' },
+          { label: 'Level Up +5' },
+          { label: 'Fast Evolve' },
+          { label: 'Make Shiny ★' },
+          { label: 'Full Heal Party', disabled: s.party.length === 0 },
+          { label: 'Get ₽10,000' },
+          { label: 'Ball & Potion Pack' },
+          { label: `Wild Encounters: ${noEnc ? 'OFF' : 'ON'}` },
+          { label: 'Back' },
+        ],
+        { x: GAME_W - 210, y: 14, width: 200, title: 'CHEATS' },
+      );
+      const pick = await menu.choose();
+      if (pick === null || pick === 8) return;
+      switch (pick) {
+        case 0:
+          await this.cheatLevelUp(1);
+          break;
+        case 1:
+          await this.cheatLevelUp(5);
+          break;
+        case 2:
+          await this.cheatEvolve();
+          break;
+        case 3: {
+          const c = await this.pickPartyMember('Make which creature shiny?');
+          if (c) {
+            c.shiny = true;
+            audio.sfxEvolve();
+            await this.dialog.show(`${displayName(c)} now sparkles! ★`);
+          }
+          break;
+        }
+        case 4:
+          healParty();
+          audio.sfxHeal();
+          await this.dialog.show('Your whole team was fully healed!');
+          break;
+        case 5:
+          s.player.money += 10000;
+          audio.sfxCatch();
+          await this.dialog.show(`Cha-ching! You now have ₽${s.player.money}.`);
+          break;
+        case 6: {
+          for (const [id, qty] of [['basicball', 10], ['greatball', 10], ['ultraball', 5], ['potion', 10], ['superpotion', 5]] as const) {
+            if (ITEMS[id]) addToBag(id, qty);
+          }
+          audio.sfxCatch();
+          await this.dialog.show('A generous pack of balls and potions was stuffed into your bag!');
+          break;
+        }
+        case 7:
+          setFlag('cheat:noencounters', !noEnc);
+          audio.sfxMenuSelect();
+          await this.dialog.show(noEnc ? 'Wild creatures will bother you again.' : 'The tall grass goes quiet. No more wild encounters.');
+          break;
+      }
+    }
+  }
+
   // ================================================================ misc
 
   private async trainerCard(): Promise<void> {
     const s = getState();
-    const panel = this.add.container(0, 0).setDepth(2500);
-    const g = this.add.graphics();
-    drawWindow(g, 60, 50, GAME_W - 120, GAME_H - 110, { fill: 0x3858a8 });
-    panel.add(g);
-    panel.add(this.add.text(80, 66, `TRAINER ${s.player.name}`, UI_FONT));
-    panel.add(this.add.text(80, 94, `Money     ₽${s.player.money}`, UI_FONT_SMALL));
-    panel.add(this.add.text(80, 112, `Playtime  ${formatPlaytime(s.player.playtimeMs)}`, UI_FONT_SMALL));
-    panel.add(this.add.text(80, 130, `Compendium  seen ${s.seen.length} · caught ${s.caught.length} / ${SPECIES_ORDER.length}`, UI_FONT_SMALL));
-    panel.add(this.add.text(80, 156, 'BADGES', { ...UI_FONT_SMALL, color: '#f0d048' }));
+    const p = panel(60, 50, GAME_W - 120, GAME_H - 110, { fill: 'rgba(56,88,168,0.25)' });
+    label(p, 20, 14, `TRAINER ${s.player.name}`);
+    label(p, 20, 42, `Money     ₽${s.player.money}`, 'small');
+    label(p, 20, 60, `Playtime  ${formatPlaytime(s.player.playtimeMs)}`, 'small');
+    label(p, 20, 78, `Compendium  seen ${s.seen.length} · caught ${s.caught.length} / ${SPECIES_ORDER.length}`, 'small');
+    label(p, 20, 104, 'BADGES', 'small gold');
     for (let i = 0; i < 8; i++) {
-      const img = this.add.image(92 + i * 30, 184, `ui/badge${i}`);
-      if (!s.player.badges.includes(`badge${i + 1}`)) img.setAlpha(0.18).setTint(0x404858);
-      panel.add(img);
+      const img = spriteSnapshot(`ui/badge${i}`);
+      img.className = 'sprite';
+      img.style.cssText += `left:${20 + i * 30}px;top:120px;width:24px;height:24px;`;
+      if (!s.player.badges.includes(`badge${i + 1}`)) img.style.opacity = '0.18';
+      p.appendChild(img);
     }
-    panel.add(this.add.text(GAME_W / 2, GAME_H - 74, '— press confirm/cancel to close —', { ...UI_FONT_SMALL, color: '#8890a8' }).setOrigin(0.5));
-    await this.waitDismiss();
-    panel.destroy();
+    label(p, (GAME_W - 120) / 2 - 110, GAME_H - 110 - 26, '— press confirm/cancel to close —', 'small dim');
+    await waitDismiss();
+    p.remove();
   }
 
   private async compendium(): Promise<void> {
@@ -524,23 +623,24 @@ export class MenuScene extends Phaser.Scene {
           rightLabel: caught ? '●' : seen ? '○' : '',
         };
       });
-      const menu = new ListMenu(this, items, { x: 30, y: 14, width: 240, visibleRows: 13, title: `COMPENDIUM  ${s.caught.length}/${SPECIES_ORDER.length}` });
+      const menu = new ListMenu(items, { x: 30, y: 14, width: 240, visibleRows: 13, title: `COMPENDIUM  ${s.caught.length}/${SPECIES_ORDER.length}` });
       const pick = await menu.choose();
       if (pick === null) return;
       const id = SPECIES_ORDER[pick];
       if (!s.seen.includes(id)) continue;
       const sp = speciesById(id);
-      const panel = this.add.container(0, 0).setDepth(2500);
-      const g = this.add.graphics();
-      drawWindow(g, 50, 40, GAME_W - 100, GAME_H - 90);
-      panel.add(g);
-      panel.add(this.add.image(120, 130, creatureKey(id, 'front')).setScale(1.2));
-      panel.add(this.add.text(200, 58, `#${sp.num.toString().padStart(3, '0')} ${sp.name}`, UI_FONT));
-      panel.add(this.add.text(200, 80, sp.types.map((t) => TYPE_NAMES[t]).join(' / '), { ...UI_FONT_SMALL, color: '#f0d048' }));
-      panel.add(this.add.text(200, 100, s.caught.includes(id) ? 'CAUGHT' : 'SEEN', { ...UI_FONT_SMALL, color: '#a8e0a8' }));
-      panel.add(this.add.text(70, 200, this.wrap(s.caught.includes(id) ? sp.flavor : '? ? ? — catch one to record its full entry.', 52), UI_FONT_SMALL));
-      await this.waitDismiss();
-      panel.destroy();
+      const p = panel(50, 40, GAME_W - 100, GAME_H - 90);
+      const img = spriteSnapshot(creatureKey(id, 'front'));
+      img.className = 'sprite';
+      img.style.cssText += 'left:24px;top:40px;width:110px;height:110px;';
+      p.appendChild(img);
+      label(p, 150, 16, `#${sp.num.toString().padStart(3, '0')} ${sp.name}`);
+      label(p, 150, 38, sp.types.map((t) => TYPE_NAMES[t]).join(' / '), 'small gold');
+      label(p, 150, 58, s.caught.includes(id) ? 'CAUGHT' : 'SEEN', 'small green');
+      const fl = label(p, 20, 158, wrapText(s.caught.includes(id) ? sp.flavor : '? ? ? — catch one to record its full entry.', 52).join('\n'), 'small');
+      fl.style.whiteSpace = 'pre';
+      await waitDismiss();
+      p.remove();
     }
   }
 
@@ -553,7 +653,7 @@ export class MenuScene extends Phaser.Scene {
         { label: 'Text Speed', rightLabel: ['Slow', 'Normal', 'Fast'][s.settings.textSpeed - 1] },
         { label: 'Done' },
       ];
-      const menu = new ListMenu(this, items, { x: 120, y: 70, width: 240, title: 'SETTINGS  (confirm to cycle)' });
+      const menu = new ListMenu(items, { x: 120, y: 70, width: 240, title: 'SETTINGS  (confirm to cycle)' });
       const pick = await menu.choose();
       if (pick === null || pick === 3) return;
       if (pick === 0) {
@@ -573,9 +673,10 @@ export class MenuScene extends Phaser.Scene {
 
   private async saveMenu(): Promise<void> {
     const s = getState();
-    const menu = new ListMenu(this, [
-      { label: 'Slot 1' }, { label: 'Slot 2' }, { label: 'Slot 3' }, { label: 'Cancel' },
-    ], { x: 150, y: 80, width: 180, title: 'Save to which slot?' });
+    const menu = new ListMenu(
+      [{ label: 'Slot 1' }, { label: 'Slot 2' }, { label: 'Slot 3' }, { label: 'Cancel' }],
+      { x: 150, y: 80, width: 180, title: 'Save to which slot?' },
+    );
     const pick = await menu.choose();
     if (pick === null || pick === 3) return;
     s.rngSeed = gameRNG.getSeed();

@@ -1,10 +1,12 @@
-# Monstra — Tales of Veridia
+# Pokemon — Tales of Veridia (3D)
 
-A complete, classic creature-collecting RPG that runs entirely in the browser.
-Explore the open region of Veridia, catch and train 40 original creatures
+A complete, classic creature-collecting RPG that runs entirely in the browser —
+now rendered as a full 3D world. Explore the open region of Veridia with free
+analog movement and an orbiting chase camera, catch and train 40 creatures
 across 8 elemental types, defeat eight gyms, dismantle Team Eclipse, and take
 on the Elite Four and Champion — with zero asset files required: every sprite
-is drawn procedurally and every note of music is synthesized live via Web Audio.
+is drawn procedurally, every tile is extruded into 3D geometry in code, and
+every note of music is synthesized live via Web Audio.
 
 ## Run it
 
@@ -13,20 +15,24 @@ npm install
 npm run dev        # local dev server
 npm run build      # static bundle in dist/ — deploy to any static host
 npm test           # engine + world integrity test suites (vitest)
+npm run smoke      # real-browser E2E (needs the dev server on :5180)
 ```
 
-Open the printed URL. The game saves to `localStorage` (3 manual slots +
-autosave at healing centers). **Clearing browser data erases saves.**
+Open the printed URL. Press Start enters fullscreen (add `?windowed=1` to
+skip). The game saves to `localStorage` (3 manual slots + autosave at healing
+centers). **Clearing browser data erases saves.**
 
 ## Controls
 
-| Action | Keyboard | Touch |
-|---|---|---|
-| Move | Arrows / WASD | D-pad |
-| Run | hold Shift | hold B |
-| Confirm / interact | Z / Space / Enter | A |
-| Cancel / back | X / Esc / Backspace | B |
-| Pause menu | Enter / Esc (while walking) | MENU |
+| Action | Input |
+|---|---|
+| Move (360°) | WASD / Arrows |
+| Run | hold Shift |
+| Orbit camera / zoom | mouse drag / wheel |
+| Confirm / interact | Z / Space / Enter |
+| Cancel / back | X / Esc / Backspace |
+| Pause menu | Enter / Esc (while walking) |
+| Fullscreen toggle | F |
 
 ## The game
 
@@ -47,6 +53,27 @@ autosave at healing centers). **Clearing browser data erases saves.**
   somewhere surprising), a villain team with five set-pieces, a catchable
   legendary, Elite Four, Champion, and Hall of Fame.
 
+## The 3D layer
+
+- **ASCII → 3D compiler** (`src/render3d/world.ts`): every map is still an
+  ASCII tile grid; a build pass bakes the floor tiles into one ground texture
+  and extrudes walls/trees/roofs/furniture into instanced boxes. Editing a map
+  is still editing ASCII art, and the world-integrity tests still bite.
+- **Continuous movement over grid logic** (`src/game/overworld.ts`): the
+  player moves freely (circle-vs-tile collision, axis sliding, ledge vaults),
+  while warps, triggers, encounters, repel and trainer line-of-sight fire on
+  tile crossings — identical rates and semantics to the 2D game.
+- **Billboard sprites**: NPCs and creatures are upright camera-facing planes
+  using the same procedural (or hot-swapped PNG) sprites, with DOOM-style
+  4-direction frame selection. The player is a procedurally rigged low-poly
+  humanoid with a code-driven walk cycle.
+- **Cinematic battles** (`src/game/battle.ts`): a floating biome-themed arena
+  (grass/cave/water/gym/dark/indoor), camera cuts behind the attacker on every
+  move, particle bursts, screen shake — replaying the same battle-engine
+  events the 2D game did.
+- **DOM UI** (`src/ui/dom.ts`): dialogs and menus are an HTML overlay in the
+  classic 480×320 layout, scaled to the viewport — crisp at any resolution.
+
 ## Asset hot-swap contract
 
 The game is fully playable with **no** image files. If you want real art, drop
@@ -63,21 +90,18 @@ public/assets/sprites/
 
 Species ids are in `src/data/species.ts` (e.g. `emberling`, `umbralis`);
 character keys in `src/render/spriteGen.ts` (`CHAR_KEYS`). Missing files are
-silently ignored — partial art sets are fine. Audio is always procedural; there
-are intentionally no sound files.
-
-**Suggested generation prompt template** (front sprites):
-> pixel-art creature sprite, 96×96, facing viewer, full body, transparent
-> background, GBA-era JRPG style, vivid `<type>` color palette, `<flavor text>`
+silently ignored — partial art sets are fine (tiles also retexture the 3D
+ground and walls). Audio is always procedural; there are intentionally no
+sound files. `node scripts/fetch-assets.mjs` downloads the PokeAPI sprite set.
 
 ## Architecture
 
 Pure, engine-independent modules (`src/engine`, `src/data`, all unit-tested,
-no Phaser imports): `battle.ts` (turn state machine emitting an event log),
+no renderer imports): `battle.ts` (turn state machine emitting an event log),
 `creature.ts` (stats/EXP/evolution), `capture.ts`, `save.ts` (versioned,
 forward-safe), `state.ts`, plus the data tables that hold *all* balance.
-Phaser 3 scenes (`src/scenes`) are a thin presentation layer that replays
-battle-engine events as animations. All randomness flows through one seedable
-RNG (`src/core/rng.ts`), so battles are reproducible. World integrity
-(map grids, warps, encounter/trainer/script references) is enforced by
-`tests/world.test.ts`.
+The Three.js layer (`src/render3d`, `src/game`) is a thin presentation layer
+that replays battle-engine events as animations. All randomness flows through
+one seedable RNG (`src/core/rng.ts`), so battles are reproducible. World
+integrity (map grids, warps, encounter/trainer/script references) is enforced
+by `tests/world.test.ts`.
