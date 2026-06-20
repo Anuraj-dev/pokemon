@@ -646,7 +646,7 @@ add(makeHouse('aurelia-house', 'Aurelia House', 'aurelia', 'house-door', {
   id: 'historian',
   sprite: 'oldman',
   dialogue: [
-    'Necrozma, the Twinlight — half shadow, half radiance. The Spire on Hollow Isle is its roost.',
+    'Mewtwo, the Twinlight — half shadow, half radiance. The Spire on Hollow Isle is its roost.',
     'Long ago it slept whenever the region was at peace. If someone woke it angry... I shudder to think.',
   ],
 }));

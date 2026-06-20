@@ -52,7 +52,7 @@ export type BattleAction =
 
 export type BattleEvent =
   | { t: 'text'; msg: string }
-  | { t: 'moveAnim'; side: Side; moveType: TypeId; category: string }
+  | { t: 'moveAnim'; side: Side; moveId: string; moveType: TypeId; category: string }
   | { t: 'hp'; side: Side; hp: number; maxHp: number }
   | { t: 'effectiveness'; mult: number }
   | { t: 'crit' }
@@ -582,13 +582,13 @@ export class BattleEngine {
       return;
     }
 
+    // every move animates — status moves get their own recipes too
+    this.emit({ t: 'moveAnim', side, moveId: move.id, moveType: move.type, category: move.category });
+
     if (move.category === 'status') {
       this.applyStatusMove(side, foeSide, move);
       return;
     }
-
-    // Damaging move
-    this.emit({ t: 'moveAnim', side, moveType: move.type, category: move.category });
 
     const foeTypes = this.types(foeSide);
     const foeAbility = this.ability(foeSide);

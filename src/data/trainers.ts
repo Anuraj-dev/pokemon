@@ -92,7 +92,7 @@ add(T('r6-ranger', 'Ranger Sol', 'ranger', [mon('galewing', 20), mon('shadepup',
 add(T('mtcinder-hiker', 'Hiker Flint', 'hiker', [mon('magmite', 24), mon('bouldrok', 25)], 34,
   'The mountain core keeps me warm. My team keeps me winning!',
   'My fire went out!',
-  { postDefeat: 'Slugma shed warm pebbles. I collect them. Do not judge me.' }));
+  { postDefeat: 'Ponyta shed warm pebbles. I collect them. Do not judge me.' }));
 add(T('mtcinder-scientist', 'Scientist Pyra', 'scientist', [mon('magmaul', 26)], 44,
   'Geothermal readings are spiking — and so is my team!',
   'Readings... flatlined.',
@@ -100,11 +100,11 @@ add(T('mtcinder-scientist', 'Scientist Pyra', 'scientist', [mon('magmaul', 26)],
 add(T('r8-girl', 'Picnicker Mab', 'girl', [mon('flutterveil', 27), mon('glimkit', 26)], 24,
   'A picnic under the dusk sky! Care to join — or battle?',
   'You squashed my sandwiches AND my pride.',
-  { postDefeat: 'Togepi glow brighter near Nocturne. Strange, for such a dark town.' }));
+  { postDefeat: 'Clefairy glow brighter near Nocturne. Strange, for such a dark town.' }));
 add(T('r8-ranger', 'Ranger Hawthorne', 'ranger', [mon('duskhound', 28), mon('gnawber', 27)], 34,
   'Few make it this far around the loop. Show me why you did!',
   'That is why, then.',
-  { postDefeat: 'Houndoom only evolve under a Dusk Stone. Mine found one itself.' }));
+  { postDefeat: 'Arcanine only evolve under a Dusk Stone. Mine found one itself.' }));
 add(T('r10-lass', 'Lass Selene', 'lass', [mon('nocturnix', 30), mon('murklob', 29)], 26,
   'The road to Aurelia is paved with losses. Mostly mine!',
   'Mostly mine, like I said...',
@@ -179,7 +179,7 @@ add(T('gym6-leader', 'Leader Blaine', 'leader6', [mon('magmite', 31), mon('flare
 add(T('gym7-trainer', 'Shade Walker Nyx', 'lass', [mon('shadepup', 34), mon('battik', 35)], 28,
   'In Nocturne we battle by starlight only.',
   'Lights out... for me.',
-  { postDefeat: 'Piers’s Houndoom strikes first from the shadows. Be faster.' }));
+  { postDefeat: 'Piers’s Arcanine strikes first from the shadows. Be faster.' }));
 add(T('gym7-leader', 'Leader Piers', 'leader7', [mon('nocturnix', 36), mon('murklob', 36), mon('duskhound', 38, 'umbracharm')], 100,
   'I am Piers. Darkness is not evil — it is rest, it is depth, it is patience. Show me you understand it.',
   'You walked through my dark and came out whole. The Umbra Badge is yours.',
@@ -187,7 +187,7 @@ add(T('gym7-leader', 'Leader Piers', 'leader7', [mon('nocturnix', 36), mon('murk
 add(T('gym8-trainer', 'Acolyte Sun', 'girl', [mon('glimkit', 38), mon('flutterveil', 38)], 30,
   'The light of Aurelia shines through my team!',
   'Eclipsed!',
-  { postDefeat: 'Valerie’s Togetic heals itself. Bring overwhelming force.' }));
+  { postDefeat: 'Valerie’s Clefable heals itself. Bring overwhelming force.' }));
 add(T('gym8-leader', 'Leader Valerie', 'leader8', [mon('glimkit', 39), mon('flutterveil', 40), mon('luminara', 42, 'luminacharm')], 100,
   'Valerie of Aurelia. Light reveals everything — including exactly how strong you are. Shall we look?',
   'Radiant! Absolutely radiant! The Lumina Badge — your eighth — is yours. The League awaits you.',
@@ -236,7 +236,7 @@ add(T('eclipse-boss1', 'Director Noxim', 'boss', [mon('duskhound', 38), mon('mag
   'Dimmed... but not extinguished. The Spire will still open for me.',
   { smart: true, postDefeat: 'Keep the key. The Spire admits anyone brave enough to climb it.' }));
 add(T('eclipse-boss2', 'Director Noxim', 'boss', [mon('nocturnix', 44), mon('murklob', 44), mon('magnerock', 45), mon('duskhound', 47, 'umbracharm')], 140,
-  'You are too late! Necrozma stirs! When it wakes, every light in Veridia goes out at once — starting with yours!',
+  'You are too late! Mewtwo stirs! When it wakes, every light in Veridia goes out at once — starting with yours!',
   'No... the eclipse... was supposed to be FOREVER...',
   { smart: true, postDefeat: 'It chose to look at you instead of me. Why? WHY?' }));
 

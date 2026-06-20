@@ -143,9 +143,9 @@ add({
   flavor: 'A grove grows on its back; whole flocks nest there. It walks once a season, to follow the sun.',
 });
 
-// ============ Bidoof line (early Verdant rodent) ============
+// ============ Rattata line (early Verdant rodent) ============
 add({
-  id: 'nibbit', name: 'Bidoof', types: ['verdant'],
+  id: 'nibbit', name: 'Rattata', types: ['verdant'],
   baseStats: { hp: 42, atk: 52, def: 40, spa: 32, spd: 38, spe: 58 },
   ability: 'momentum', growth: 'mediumFast', catchRate: 255, expYield: 48,
   evYield: { spe: 1 }, shape: 'quadruped',
@@ -154,7 +154,7 @@ add({
   flavor: 'Its front teeth never stop growing, so it never stops gnawing. Fence posts fear it.',
 });
 add({
-  id: 'gnawber', name: 'Bibarel', types: ['verdant'],
+  id: 'gnawber', name: 'Raticate', types: ['verdant'],
   baseStats: { hp: 64, atk: 80, def: 58, spa: 42, spd: 54, spe: 86 },
   ability: 'momentum', growth: 'mediumFast', catchRate: 127, expYield: 130,
   evYield: { spe: 2 }, shape: 'quadruped',
@@ -284,9 +284,9 @@ add({
   flavor: 'Its bill can pierce a ship’s hull. Racing one along a current is a coastal rite of passage.',
 });
 
-// ============ Slugma line (Inferno/Terra) ============
+// ============ Ponyta line (Inferno/Terra) ============
 add({
-  id: 'magmite', name: 'Slugma', types: ['inferno', 'terra'],
+  id: 'magmite', name: 'Ponyta', types: ['inferno', 'terra'],
   baseStats: { hp: 55, atk: 70, def: 75, spa: 50, spd: 50, spe: 30 },
   ability: 'thermalcore', growth: 'mediumSlow', catchRate: 150, expYield: 75,
   evYield: { atk: 1 }, shape: 'golem',
@@ -295,7 +295,7 @@ add({
   flavor: 'A crust of cooled lava hides its molten core. It dozes in kiln rooms, paying rent in heat.',
 });
 add({
-  id: 'magmaul', name: 'Magcargo', types: ['inferno', 'terra'],
+  id: 'magmaul', name: 'Rapidash', types: ['inferno', 'terra'],
   baseStats: { hp: 75, atk: 100, def: 95, spa: 70, spd: 70, spe: 40 },
   ability: 'thermalcore', growth: 'mediumSlow', catchRate: 60, expYield: 175,
   evYield: { atk: 2 }, shape: 'golem',
@@ -303,9 +303,9 @@ add({
   flavor: 'When it claps its fists together, the shockwave glows. Smiths beg shavings off its knuckles.',
 });
 
-// ============ Houndour line (Umbra) ============
+// ============ Growlithe line (Umbra) ============
 add({
-  id: 'shadepup', name: 'Houndour', types: ['umbra'],
+  id: 'shadepup', name: 'Growlithe', types: ['umbra'],
   baseStats: { hp: 50, atk: 65, def: 45, spa: 60, spd: 45, spe: 70 },
   ability: 'menace', growth: 'mediumFast', catchRate: 140, expYield: 72,
   evYield: { atk: 1 }, shape: 'quadruped',
@@ -314,7 +314,7 @@ add({
   flavor: 'It naps inside other creatures’ shadows for warmth. The shadows do not seem to mind.',
 });
 add({
-  id: 'duskhound', name: 'Houndoom', types: ['umbra'],
+  id: 'duskhound', name: 'Arcanine', types: ['umbra'],
   baseStats: { hp: 70, atk: 95, def: 62, spa: 88, spd: 62, spe: 98 },
   ability: 'menace', growth: 'mediumFast', catchRate: 50, expYield: 178,
   evYield: { atk: 2 }, shape: 'quadruped',
@@ -322,9 +322,9 @@ add({
   flavor: 'It howls at the new moon — the only night dark enough to hide its whole pack at once.',
 });
 
-// ============ Togepi line (Lumina) ============
+// ============ Clefairy line (Lumina) ============
 add({
-  id: 'glimkit', name: 'Togepi', types: ['lumina'],
+  id: 'glimkit', name: 'Clefairy', types: ['lumina'],
   baseStats: { hp: 48, atk: 40, def: 48, spa: 70, spd: 62, spe: 52 },
   ability: 'purebody', growth: 'mediumFast', catchRate: 140, expYield: 70,
   evYield: { spa: 1 }, shape: 'spirit',
@@ -333,7 +333,7 @@ add({
   flavor: 'It glows brighter when praised. Children carry them in lanterns that are never lit.',
 });
 add({
-  id: 'luminara', name: 'Togetic', types: ['lumina'],
+  id: 'luminara', name: 'Clefable', types: ['lumina'],
   baseStats: { hp: 68, atk: 55, def: 68, spa: 108, spd: 92, spe: 74 },
   ability: 'prismshield', growth: 'mediumFast', catchRate: 50, expYield: 184,
   evYield: { spa: 2 }, shape: 'spirit',
@@ -378,9 +378,9 @@ add({
   flavor: 'A lodestone that woke up. It hovers a stubborn hand-width above the ground at all times.',
 });
 
-// ============ Golett line (Link Stone) ============
+// ============ Cubone line (Link Stone) ============
 add({
-  id: 'golemite', name: 'Golett', types: ['terra'],
+  id: 'golemite', name: 'Cubone', types: ['terra'],
   baseStats: { hp: 70, atk: 85, def: 90, spa: 40, spd: 55, spe: 30 },
   ability: 'grit', growth: 'slow', catchRate: 100, expYield: 135,
   evYield: { atk: 1, def: 1 }, shape: 'golem',
@@ -389,12 +389,12 @@ add({
   flavor: 'Carved by a civilization no one remembers, animated by something no one understands.',
 });
 add({
-  id: 'gargantuan', name: 'Golurk', types: ['terra'],
+  id: 'gargantuan', name: 'Marowak', types: ['terra'],
   baseStats: { hp: 95, atk: 120, def: 115, spa: 50, spd: 70, spe: 40 },
   ability: 'grit', growth: 'slow', catchRate: 45, expYield: 223,
   evYield: { atk: 2, def: 1 }, shape: 'golem',
   learnset: [[1, 'rocktoss'], [1, 'bulwark'], [1, 'landslide'], [26, 'crushgrip'], [34, 'stoneedge'], [42, 'quake'], [50, 'detonate']],
-  flavor: 'Two Golett bonded through a Link Stone become one. It remembers being both of them.',
+  flavor: 'Two Cubone bonded through a Link Stone become one. It remembers being both of them.',
 });
 
 // ============ Dratini line (pseudo-legendary) ============
@@ -427,7 +427,7 @@ add({
 
 // ============ Legendary ============
 add({
-  id: 'umbralis', name: 'Necrozma', types: ['umbra', 'lumina'],
+  id: 'umbralis', name: 'Mewtwo', types: ['umbra', 'lumina'],
   baseStats: { hp: 100, atk: 90, def: 95, spa: 130, spd: 110, spe: 105 },
   ability: 'prismshield', growth: 'slow', catchRate: 3, expYield: 340,
   evYield: { spa: 3 }, shape: 'spirit',
