@@ -111,3 +111,7 @@ Game rules live in `src/engine` and `src/data`. Nothing in `src/engine` imports 
 The presentation layer is `src/render3d` and `src/game`. `src/main.ts` owns one WebGL renderer and one animation loop, and it switches between the overworld, battles, and DOM-only screens. `src/game/battle.ts` replays the engine's events as camera cuts, move effects, and screen shake. `src/ui/dom.ts` draws menus as HTML over a 480×320 layout that scales to the window.
 
 Battle logic draws its random numbers from an RNG passed in from `src/core/rng.ts`, so a seed replays the same battle. Cosmetic effects in `src/game/moveFx.ts` call `Math.random`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
